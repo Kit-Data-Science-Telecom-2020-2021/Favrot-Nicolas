@@ -2,7 +2,7 @@
 
 import unittest
 import requests
-from bs4 import BeautifulSoup
+#from bs4 import beautifulsoup
 
 URL_PAGE2 = "https://kim.fspot.org/cours/page2.html"
 URL_PAGE3 = "https://kim.fspot.org/cours/page3.html"
@@ -15,6 +15,18 @@ URL_PAGE3 = "https://kim.fspot.org/cours/page3.html"
 
 def get_prices_from_url(url):
     prices = {}
+    r = requests.get(url)
+    content = r.content.decode('utf-8')
+    soup = BeautifulSoup(content)
+    for i in range(len(soup.find_all('h2'))):
+        prix = soup.find_all('span', {'class': "pricing-table-price"})[i].text
+        tab = soup.find_all('ul', {'class': "pricing-table-list"})[i]
+        stor = tab.find_all('li')[3].text
+        data = tab.find_all('li')[4].text        
+        
+        prices[soup.find_all('h2')[i].text] = {'price': re.findall('[0-9$]+', prix)[0],
+                                               'storage':re.findall('[0-9A-Z]+', stor)[0],
+                                              'databases': int(re.findall('[0-9]+', data)[0])}
     return prices
 
 
@@ -22,15 +34,21 @@ def get_prices_from_url(url):
 # Exemple URL: https://www.beerwulf.com/fr-fr/p/bieres/brouwerij-t-verzet-super-noah.33
 
 def extract_beer_infos(url):
+    r = requests.get(url)
+    content = r.content.decode('utf-8')
+    soup = BeautifulSoup(content)
+       
     infos = {
-        'name': None,
-        'note': None,
-        'price': None,
-        'volume': None,
+        'name': soup.find_all('h1')[0].text,
+        'note': soup.find_all('div', {'class' : "stars"})[0]['data-percent'],
+        'price': re.findall('[0-9,]+',soup.find_all('span', {'class' : "price"})[0].text)[0],
+        'volume': int(re.findall('[0-9]+',soup.find_all('div', {'class' : "product-subtext"})[0].text)[-1]),
     }
     return infos
 
 
+import json
+from multiprocessing import Pool
 # Cette URL retourne un JSON avec une liste de bières
 URL_BEERLIST_AUTRICHE = "https://www.beerwulf.com/fr-FR/api/search/searchProducts?country=Autriche&container=Bouteille"
 
@@ -39,7 +57,7 @@ URL_BEERLIST_AUTRICHE = "https://www.beerwulf.com/fr-FR/api/search/searchProduct
 # Chercher comment optimiser cette fonction en utilisant multiprocessing.Pool pour paralléliser les accès web.
 #
 # Exemple de retour :
-# [{'name': 'Engelszell Benno', 'note': 70, 'price': 4.29, 'volume': 33}
+# [{'name': 'Engelszell Benno', 'note': 70, 'price': 4.29, 'volume': 33},
 #  {'name': 'Engelszell Trappisten Weiße', 'note': 70, 'price': 3.39, 'volume': 33}
 #  {'name': 'Engelszell Gregorius', 'note': 70, 'price': 4.49, 'volume': 33}
 #  {'name': 'Bevog Rudeen Black IPA', 'note': 80, 'price': 4.49, 'volume': 33}
@@ -50,14 +68,29 @@ URL_BEERLIST_AUTRICHE = "https://www.beerwulf.com/fr-FR/api/search/searchProduct
 #  {'name': 'Brew Age Hopfenauflauf', 'note': 70, 'price': 2.99, 'volume': 33}]
 
 def extract_beer_list_infos(url):
+    data = requests.get(url)
+    data = data.json()
+    
+    # API JSON
+    #response = requests.get(f'https://api.deezer.com/artist/{artist}')
+    #data = response.json()
+    #data
+    
     # Collecter les pages de bières à partir du JSON
     beer_pages = []
+    for i in range(len(data['items'])):
+        beer_pages.append('https://www.beerwulf.com' + data['items'][i]['contentReference'])
     
     # Sequential version (slow):
-    beers = []
+    #beers = []
+    #for page in beer_pages:
+    #    beers.append(extract_beer_infos(page))
 
     # Parallel version (faster):
-    # beers = []
+    beers = []
+    with Pool(processes=9) as pool:
+        beers = pool.map(extract_beer_infos, beer_pages)
+    
 
     return beers
 
